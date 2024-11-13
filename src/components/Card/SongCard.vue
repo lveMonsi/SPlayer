@@ -25,7 +25,7 @@
           :key="song.cover"
           :src="song.path ? song.cover : song.coverSize?.s || song.cover"
           class="cover"
-          @update:show.once="localCover"
+          @update:show="localCover"
         />
         <!-- 信息 -->
         <div class="info">
@@ -98,7 +98,7 @@
             <n-text class="ar"> {{ song.artists || "未知艺术家" }} </n-text>
           </div>
           <!-- 别名 -->
-          <n-text v-if="song.alia" class="alia" depth="3">{{ song.alia }}</n-text>
+          <n-text v-if="song.alia" class="alia text-hidden" depth="3">{{ song.alia }}</n-text>
         </div>
       </div>
       <!-- 专辑 -->
@@ -204,13 +204,17 @@ const localCover = async (show: boolean) => {
     border-radius: 12px;
     border: 2px solid rgba(var(--primary), 0.12);
     background-color: var(--surface-container-hex);
-    transition:
-      background-color 0.3s var(--n-bezier),
-      border-color 0.3s var(--n-bezier);
+    // transition:
+    //   transform 0.1s,
+    //   background-color 0.3s var(--n-bezier),
+    //   border-color 0.3s var(--n-bezier);
     &.play {
       border-color: rgba(var(--primary), 0.58);
       background-color: rgba(var(--primary), 0.28);
     }
+    // &:active {
+    //   transform: scale(0.99);
+    // }
     &:hover {
       border-color: rgba(var(--primary), 0.58);
       .num {
@@ -249,6 +253,9 @@ const localCover = async (show: boolean) => {
       transition:
         opacity 0.3s,
         transform 0.3s;
+      :deep(.svg-container) {
+        color: var(--primary-hex);
+      }
     }
     .status,
     .play {

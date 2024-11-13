@@ -116,6 +116,7 @@ import { useMusicStore, useStatusStore } from "@/stores";
 import { VirtList } from "vue-virt-list";
 import { cloneDeep, entries, isEmpty } from "lodash-es";
 import { sortOptions } from "@/utils/meta";
+import { renderIcon } from "@/utils/helper";
 import SongListMenu from "@/components/Menu/SongListMenu.vue";
 import player from "@/utils/player";
 
@@ -225,7 +226,7 @@ const sortMenuOptions = computed<DropdownOption[]>(() =>
     key,
     label: name,
     show: show === "all" ? true : show === props.type ? true : false,
-    icon,
+    icon: renderIcon(icon),
   })),
 );
 
@@ -280,9 +281,11 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .song-list {
   height: 100%;
+  border-radius: 12px 0 0 12px;
+  overflow: hidden;
   .song-card {
     padding-bottom: 12px;
-    padding-right: 4px;
+    // padding-right: 4px;
   }
   // 悬浮顶栏
   .list-header {
@@ -292,8 +295,8 @@ onBeforeUnmount(() => {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 18px 8px 12px;
-    margin-right: 4px;
+    padding: 8px 12px;
+    // margin-right: 4px;
     border: 1px solid transparent;
     background-color: var(--background-hex);
     .n-text {

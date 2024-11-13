@@ -344,7 +344,9 @@ const instantLyrics = computed(() => {
   const content = isYrc
     ? musicStore.songLyric.yrcData[statusStore.lyricIndex]
     : musicStore.songLyric.lrcData[statusStore.lyricIndex];
-  return content?.tran ? `${content?.content}（ ${content?.tran} ）` : content?.content;
+  return content?.tran && settingStore.showTran
+    ? `${content?.content}（ ${content?.tran} ）`
+    : content?.content;
 });
 
 // 音量条鼠标滚动
@@ -449,6 +451,7 @@ const changeVolume = (e: WheelEvent) => {
           transition: color 0.3s;
         }
         .like {
+          color: var(--primary-hex);
           margin-left: 8px;
           transition: transform 0.3s;
           cursor: pointer;
@@ -552,6 +555,8 @@ const changeVolume = (e: WheelEvent) => {
       font-size: 12px;
       margin-right: 8px;
       .n-text {
+        color: var(--primary-hex);
+        opacity: 0.8;
         &:nth-of-type(1) {
           &::after {
             content: "/";
@@ -572,6 +577,7 @@ const changeVolume = (e: WheelEvent) => {
       cursor: pointer;
       .n-icon {
         font-size: 22px;
+        color: var(--primary-hex);
       }
       &:hover {
         transform: scale(1.1);
