@@ -1,10 +1,10 @@
 <template>
   <div class="setting">
     <div class="set-left">
-      <div class="title">
+      <n-flex class="title" :size="0" vertical>
         <n-h1>设置</n-h1>
         <n-text :depth="3">个性化与全局设置</n-text>
-      </div>
+      </n-flex>
       <!-- 设置菜单 -->
       <n-menu
         v-model:value="activeKey"
@@ -19,7 +19,10 @@
           {{ packageJson.author }}
         </n-text>
         <n-text class="name">SPlayer</n-text>
-        <n-text class="version" depth="3">{{ packageJson.version }}</n-text>
+        <n-tag v-if="statusStore.isDeveloperMode" class="version" size="small" type="warning" round>
+          DEV · v{{ packageJson.version }}
+        </n-tag>
+        <n-text v-else class="version" depth="3">v{{ packageJson.version }}</n-text>
       </div>
     </div>
     <n-scrollbar
@@ -33,11 +36,13 @@
         <!-- 播放 -->
         <PlaySetting v-else-if="activeKey === 'play'" />
         <!-- 歌词 -->
-        <LyricsSetting v-else-if="activeKey === 'lyrics'" />
+        <LyricsSetting v-else-if="activeKey === 'lyrics'" :scroll-to="props.scrollTo" />
         <!-- 快捷键 -->
         <KeyboardSetting v-else-if="activeKey === 'keyboard'" />
         <!-- 本地 -->
         <LocalSetting v-else-if="activeKey === 'local'" />
+        <!-- 第三方 -->
+        <ThirdSetting v-else-if="activeKey === 'third'" />
         <!-- 其他 -->
         <OtherSetting v-else-if="activeKey === 'other'" />
         <!-- 关于 -->
@@ -52,10 +57,14 @@
 <script setup lang="ts">
 import type { MenuOption, NScrollbar } from "naive-ui";
 import type { SettingType } from "@/types/main";
-import { isElectron, renderIcon } from "@/utils/helper";
+import { renderIcon } from "@/utils/helper";
+import { isElectron } from "@/utils/env";
+import { useStatusStore } from "@/stores";
 import packageJson from "@/../package.json";
 
-const props = defineProps<{ type: SettingType }>();
+const props = defineProps<{ type: SettingType; scrollTo?: string }>();
+
+const statusStore = useStatusStore();
 
 // 设置内容
 const setScrollbar = ref<InstanceType<typeof NScrollbar> | null>(null);
@@ -88,9 +97,14 @@ const menuOptions: MenuOption[] = [
   },
   {
     key: "local",
-    label: "本地与下载",
+    label: "本地与缓存",
     show: isElectron,
     icon: renderIcon("Storage"),
+  },
+  {
+    key: "third",
+    label: "连接与集成",
+    icon: renderIcon("Extension"),
   },
   {
     key: "other",
@@ -144,10 +158,7 @@ const toGithub = () => {
         margin-right: 6px;
       }
       .version {
-        &::before {
-          content: "v";
-          margin-right: 2px;
-        }
+        pointer-events: none;
       }
       .author {
         display: flex;
@@ -194,6 +205,12 @@ const toGithub = () => {
         margin-bottom: 0;
       }
     }
+    .n-h {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+    }
     .n-collapse-transition {
       margin-bottom: 12px;
       &:last-child {
@@ -228,6 +245,7 @@ const toGithub = () => {
       }
       .set {
         justify-content: flex-end;
+        min-width: 200px;
         width: 200px;
         &.n-switch {
           width: max-content;

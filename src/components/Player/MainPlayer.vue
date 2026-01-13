@@ -8,22 +8,7 @@
     ]"
   >
     <!-- 进度条 -->
-    <n-slider
-      v-model:value="statusStore.progress"
-      :step="0.01"
-      :min="0"
-      :max="100"
-      :tooltip="false"
-      :keyboard="false"
-      :marks="
-        statusStore.chorus && statusStore.progress <= statusStore.chorus
-          ? { [statusStore.chorus]: '' }
-          : undefined
-      "
-      class="player-slider"
-      @dragstart="player.pause(false)"
-      @dragend="sliderDragend"
-    />
+    <PlayerSlider />
     <!-- 信息 -->
     <div class="play-data">
       <!-- 封面 -->
@@ -42,12 +27,12 @@
           >
             <template #placeholder>
               <div class="cover-loading">
-                <img src="/images/song.jpg?assest" class="loading-img" alt="loading-img" />
+                <img src="/images/song.jpg?asset" class="loading-img" alt="loading-img" />
               </div>
             </template>
           </n-image>
           <!-- 打开播放器 -->
-          <SvgIcon name="Zoom" :size="30" />
+          <SvgIcon name="Expand" :size="30" />
         </div>
       </Transition>
       <!-- 信息 -->
@@ -61,6 +46,16 @@
               :speed="0.2"
               class="name"
             />
+            <!-- 倍速 -->
+            <n-tag
+              v-if="statusStore.playRate !== 1"
+              type="primary"
+              size="small"
+              round
+              @click="openChangeRate"
+            >
+              {{ statusStore.playRate }}x
+            </n-tag>
             <!-- 喜欢 -->
             <SvgIcon
               v-if="musicStore.playSong.type !== 'radio'"
@@ -94,7 +89,7 @@
                   v-for="(item, index) in musicStore.playSong.artists"
                   :key="index"
                   class="ar-item"
-                  @click="openJumpArtist(musicStore.playSong.artists)"
+                  @click="openJumpArtist(musicStore.playSong.artists, item.id)"
                 >
                   {{ item.name }}
                 </n-text>
@@ -108,12 +103,22 @@
       </Transition>
     </div>
     <!-- 控制 -->
-    <div class="play-control">
+    <n-flex :size="8" align="center" justify="center" class="play-control">
+      <!-- 随机按钮 -->
+      <template v-if="musicStore.playSong.type !== 'radio' && !statusStore.personalFmMode">
+        <div class="play-icon" @click.stop="player.toggleShuffle()">
+          <SvgIcon
+            :name="statusStore.shuffleIcon"
+            :size="20"
+            :depth="statusStore.shuffleMode === 'off' ? 3 : 1"
+          />
+        </div>
+      </template>
       <!-- 不喜欢 -->
       <div
         v-if="statusStore.personalFmMode"
         class="play-icon"
-        v-debounce="() => player.personalFMTrash(musicStore.personalFMSong?.id)"
+        v-debounce="() => songManager.personalFMTrash(musicStore.personalFMSong?.id)"
       >
         <SvgIcon class="icon" :size="18" name="ThumbDown" />
       </div>
@@ -131,7 +136,7 @@
         strong
         secondary
         circle
-        v-debounce="() => player.playOrPause()"
+        @click.stop="player.playOrPause()"
       >
         <template #icon>
           <Transition name="fade" mode="out-in">
@@ -147,7 +152,17 @@
       <div class="play-icon" v-debounce="() => player.nextOrPrev('next')">
         <SvgIcon :size="26" name="SkipNext" />
       </div>
-    </div>
+      <!-- 循环按钮 -->
+      <template v-if="musicStore.playSong.type !== 'radio' && !statusStore.personalFmMode">
+        <div class="play-icon" @click.stop="player.toggleRepeat()">
+          <SvgIcon
+            :name="statusStore.repeatIcon"
+            :size="20"
+            :depth="statusStore.repeatMode === 'off' ? 3 : 1"
+          />
+        </div>
+      </template>
+    </n-flex>
     <!-- 功能 -->
     <Transition name="fade" mode="out-in">
       <n-flex
@@ -156,73 +171,57 @@
         class="play-menu"
         justify="end"
       >
-        <!-- 播放时间 -->
-        <div class="time">
-          <n-text depth="2">{{ secondsToTime(statusStore.currentTime) }}</n-text>
-          <n-text depth="2">{{ secondsToTime(statusStore.duration) }}</n-text>
-        </div>
-        <!-- 桌面歌词 -->
-        <div v-if="isElectron" class="menu-icon" @click.stop="player.toggleDesktopLyric">
-          <SvgIcon name="DesktopLyric" :depth="statusStore.showDesktopLyric ? 1 : 3" />
-        </div>
-        <!-- 播放模式 -->
-        <n-dropdown
-          v-if="musicStore.playSong.type !== 'radio' && !statusStore.personalFmMode"
-          :options="playModeOptions"
-          :show-arrow="true"
-          @select="(mode) => player.togglePlayMode(mode)"
-        >
-          <div class="menu-icon" @click.stop="player.togglePlayMode(false)">
-            <SvgIcon :name="statusStore.playModeIcon" />
-          </div>
-        </n-dropdown>
-        <!-- 音量调节 -->
-        <n-popover :show-arrow="false" :style="{ padding: 0 }">
-          <template #trigger>
-            <div class="menu-icon" @click.stop="player.toggleMute" @wheel="player.setVolume">
-              <SvgIcon :name="statusStore.playVolumeIcon" />
+        <!-- 时间相关 -->
+        <Transition name="fade" mode="out-in">
+          <n-flex
+            :key="statusStore.autoClose.enable ? 'autoClose' : 'time'"
+            :size="4"
+            justify="center"
+            class="time-container"
+            vertical
+          >
+            <div class="time" @click="toggleTimeFormat">
+              <n-text depth="2">{{ timeDisplay[0] }}</n-text>
+              <n-text depth="2">{{ timeDisplay[1] }}</n-text>
             </div>
-          </template>
-          <div class="volume-change" @wheel="player.setVolume">
-            <n-slider
-              v-model:value="statusStore.playVolume"
-              :tooltip="false"
-              :min="0"
-              :max="1"
-              :step="0.01"
-              vertical
-              @update:value="(val) => player.setVolume(val)"
-            />
-            <n-text class="slider-num">{{ statusStore.playVolumePercent }}%</n-text>
-          </div>
-        </n-popover>
-        <!-- 播放列表 -->
-        <n-badge
-          v-if="!statusStore.personalFmMode"
-          :value="dataStore.playList?.length ?? 0"
-          :show="settingStore.showPlaylistCount"
-          :max="999"
-          :style="{
-            marginRight: settingStore.showPlaylistCount ? '12px' : null,
-          }"
-        >
-          <div class="menu-icon" @click.stop="statusStore.playListShow = !statusStore.playListShow">
-            <SvgIcon name="PlayList" />
-          </div>
-        </n-badge>
+            <!-- 定时关闭 -->
+            <n-tag
+              v-if="statusStore.autoClose.enable"
+              size="small"
+              type="primary"
+              round
+              @click="openAutoClose"
+            >
+              {{ convertSecondsToTime(statusStore.autoClose.remainTime) }}
+              <template #icon>
+                <SvgIcon name="TimeAuto" />
+              </template>
+            </n-tag>
+          </n-flex>
+        </Transition>
+        <!-- 功能区 -->
+        <PlayerRightMenu />
       </n-flex>
     </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { DropdownOption } from "naive-ui";
-import { useMusicStore, useStatusStore, useDataStore, useSettingStore } from "@/stores";
-import { secondsToTime, calculateCurrentTime } from "@/utils/time";
-import { renderIcon, isElectron, coverLoaded } from "@/utils/helper";
+import { usePlayerController } from "@/core/player/PlayerController";
+import { useSongManager } from "@/core/player/SongManager";
+import { useDataStore, useMusicStore, useSettingStore, useStatusStore } from "@/stores";
 import { toLikeSong } from "@/utils/auth";
-import { openDownloadSong, openJumpArtist, openPlaylistAdd } from "@/utils/modal";
-import player from "@/utils/player";
+import { useTimeFormat } from "@/composables/useTimeFormat";
+import { copyData, coverLoaded, renderIcon } from "@/utils/helper";
+import {
+  openAutoClose,
+  openChangeRate,
+  openDownloadSong,
+  openJumpArtist,
+  openPlaylistAdd,
+} from "@/utils/modal";
+import { convertSecondsToTime } from "@/utils/time";
+import type { DropdownOption } from "naive-ui";
 
 const router = useRouter();
 const dataStore = useDataStore();
@@ -230,24 +229,10 @@ const musicStore = useMusicStore();
 const statusStore = useStatusStore();
 const settingStore = useSettingStore();
 
-// 播放模式数据
-const playModeOptions = ref([
-  {
-    label: "列表循环",
-    key: "repeat",
-    icon: renderIcon("Repeat"),
-  },
-  {
-    label: "单曲循环",
-    key: "repeat-once",
-    icon: renderIcon("RepeatSong"),
-  },
-  {
-    label: "随机播放",
-    key: "shuffle",
-    icon: renderIcon("Shuffle"),
-  },
-]);
+const player = usePlayerController();
+const songManager = useSongManager();
+
+const { timeDisplay, toggleTimeFormat } = useTimeFormat();
 
 // 歌曲更多操作
 const songMoreOptions = computed<DropdownOption[]>(() => {
@@ -257,6 +242,56 @@ const songMoreOptions = computed<DropdownOption[]>(() => {
   const isSong = song.type === "song";
   const isLocal = !!song?.path;
   return [
+    {
+      key: "more",
+      label: "更多操作",
+      icon: renderIcon("Menu", { size: 18 }),
+      children: [
+        {
+          key: "code-name",
+          label: `复制${song.type === "song" ? "歌曲" : "节目"}名称`,
+          props: {
+            onClick: () => copyData(song.name),
+          },
+          icon: renderIcon("Copy", { size: 18 }),
+        },
+        {
+          key: "code-id",
+          label: `复制${song.type === "song" ? "歌曲" : "节目"} ID`,
+          show: !isLocal,
+          props: {
+            onClick: () => copyData(song.id),
+          },
+          icon: renderIcon("Copy", { size: 18 }),
+        },
+        {
+          key: "share",
+          label: `分享${song.type === "song" ? "歌曲" : "节目"}链接`,
+          show: !isLocal,
+          props: {
+            onClick: () =>
+              copyData(
+                `https://music.163.com/#/${song.type}?id=${song.id}`,
+                "已复制分享链接到剪切板",
+              ),
+          },
+          icon: renderIcon("Share", { size: 18 }),
+        },
+      ],
+    },
+    {
+      key: "search",
+      label: "同名搜索",
+      show: settingStore.useOnlineService,
+      props: {
+        onClick: () => router.push({ name: "search", query: { keyword: song.name } }),
+      },
+      icon: renderIcon("Search"),
+    },
+    {
+      key: "line",
+      type: "divider",
+    },
     {
       key: "playlist-add",
       label: "添加到歌单",
@@ -278,7 +313,7 @@ const songMoreOptions = computed<DropdownOption[]>(() => {
     {
       key: "download",
       label: "下载歌曲",
-      show: !isLocal && isSong,
+      show: statusStore.isDeveloperMode && !isLocal && isSong,
       props: { onClick: () => openDownloadSong(musicStore.playSong) },
       icon: renderIcon("Download"),
     },
@@ -299,20 +334,12 @@ const songMoreOptions = computed<DropdownOption[]>(() => {
   ];
 });
 
-// 进度条拖拽结束
-const sliderDragend = () => {
-  const seek = calculateCurrentTime(statusStore.progress, statusStore.duration);
-  statusStore.playStatus = true;
-  // 调整进度
-  player.setSeek(seek);
-  player.play();
-};
-
 // 是否展示歌词
 const isShowLyrics = computed(() => {
   const isHasLrc = musicStore.isHasLrc;
   return (
     isHasLrc &&
+    !statusStore.lyricLoading &&
     settingStore.barLyricShow &&
     musicStore.playSong.type !== "radio" &&
     statusStore.playStatus &&
@@ -326,9 +353,10 @@ const instantLyrics = computed(() => {
   const content = isYrc
     ? musicStore.songLyric.yrcData[statusStore.lyricIndex]
     : musicStore.songLyric.lrcData[statusStore.lyricIndex];
-  return content?.tran && settingStore.showTran
-    ? `${content?.content}（ ${content?.tran} ）`
-    : content?.content;
+  const contentStr = content?.words?.map((v) => v.word).join("") || "";
+  return content?.translatedLyric && settingStore.showTran
+    ? `${contentStr}（ ${content?.translatedLyric} ）`
+    : contentStr || "";
 });
 </script>
 
@@ -343,7 +371,7 @@ const instantLyrics = computed(() => {
   background-color: var(--surface-container-hex);
   // background-color: rgba(var(--surface-container), 0.28);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   transition: bottom 0.3s;
   z-index: 10;
@@ -363,8 +391,8 @@ const instantLyrics = computed(() => {
   .play-data {
     display: flex;
     flex-direction: row;
-    max-width: 100%;
     overflow: hidden;
+    max-width: 640px;
     .cover {
       position: relative;
       display: flex;
@@ -415,7 +443,8 @@ const instantLyrics = computed(() => {
     .info {
       display: flex;
       flex-direction: column;
-      width: 100%;
+      flex: 1;
+      min-width: 0;
       .data {
         display: flex;
         align-items: center;
@@ -423,15 +452,21 @@ const instantLyrics = computed(() => {
         .name {
           font-weight: bold;
           font-size: 16px;
-          width: max-content;
-          max-width: calc(100% - 100px);
+          flex: 0 1 auto;
+          width: auto;
+          min-width: 0;
           transition: color 0.3s;
+        }
+        .n-tag {
+          margin-left: 8px;
+          flex-shrink: 0;
         }
         .like {
           color: var(--primary-hex);
           margin-left: 8px;
           transition: transform 0.3s;
           cursor: pointer;
+          flex-shrink: 0;
           &:hover {
             transform: scale(1.15);
           }
@@ -442,6 +477,7 @@ const instantLyrics = computed(() => {
         .more {
           margin-left: 8px;
           cursor: pointer;
+          flex-shrink: 0;
         }
       }
       .artists {
@@ -481,14 +517,11 @@ const instantLyrics = computed(() => {
     }
   }
   .play-control {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
+    margin: 0 60px;
     .play-pause {
       --n-width: 44px;
       --n-height: 44px;
-      margin: 0 12px;
+      margin: 0 4px;
       transition:
         background-color 0.3s,
         transform 0.3s;
@@ -509,10 +542,12 @@ const instantLyrics = computed(() => {
       width: 38px;
       height: 38px;
       border-radius: 50%;
+      will-change: transform;
       transition:
         background-color 0.3s,
         transform 0.3s;
       cursor: pointer;
+      margin: 0 2px;
       .n-icon {
         color: var(--primary-hex);
       }
@@ -526,11 +561,20 @@ const instantLyrics = computed(() => {
     }
   }
   .play-menu {
+    margin-left: auto;
+    max-width: 640px;
+    .time-container {
+      margin-right: 8px;
+      .n-tag {
+        justify-content: center;
+        font-size: 12px;
+      }
+    }
     .time {
+      cursor: pointer;
       display: flex;
       align-items: center;
       font-size: 12px;
-      margin-right: 8px;
       .n-text {
         color: var(--primary-hex);
         opacity: 0.8;
@@ -541,49 +585,11 @@ const instantLyrics = computed(() => {
           }
         }
       }
-    }
-    .menu-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 8px;
-      border-radius: 8px;
-      transition:
-        background-color 0.3s,
-        transform 0.3s;
-      cursor: pointer;
-      .n-icon {
-        font-size: 22px;
-        color: var(--primary-hex);
-      }
       &:hover {
-        transform: scale(1.1);
-        background-color: rgba(var(--primary), 0.28);
-      }
-      &:active {
-        transform: scale(1);
+        text-decoration: underline;
+        text-decoration-color: var(--primary-hex);
       }
     }
-    :deep(.n-badge-sup) {
-      background-color: rgba(var(--primary), 0.28);
-      backdrop-filter: blur(20px);
-      .n-base-slot-machine {
-        color: var(--primary-hex);
-      }
-    }
-  }
-}
-// 音量调节
-.volume-change {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 64px;
-  height: 200px;
-  padding: 12px 16px;
-  .slider-num {
-    margin-top: 4px;
-    font-size: 12px;
   }
 }
 </style>

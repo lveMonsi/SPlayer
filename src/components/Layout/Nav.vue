@@ -16,7 +16,7 @@
     <!-- 主内容 -->
     <n-flex class="nav-main">
       <!-- 搜索 -->
-      <SearchInp />
+      <SearchInp v-if="settingStore.useOnlineService" />
       <!-- 可拖拽 -->
       <div class="nav-drag" />
       <!-- 用户 -->
@@ -31,29 +31,38 @@
       </n-dropdown>
     </n-flex>
     <!-- 客户端控制 -->
-    <n-flex v-if="isElectron" align="center" class="client-control">
+    <n-flex v-if="isElectron && useBorderless" align="center" class="client-control">
       <n-divider class="divider" vertical />
-      <n-button :focusable="false" title="最小化" tertiary circle @click="min">
-        <template #icon>
-          <SvgIcon name="WindowMinimize" />
-        </template>
-      </n-button>
-      <n-button
-        :focusable="false"
-        :title="isMax ? '还原' : '最大化'"
-        tertiary
-        circle
-        @click="maxOrRes"
-      >
-        <template #icon>
-          <SvgIcon :name="isMax ? 'WindowRestore' : 'WindowMaximize'" />
-        </template>
-      </n-button>
-      <n-button :focusable="false" title="关闭" tertiary circle @click="tryClose">
-        <template #icon>
-          <SvgIcon name="WindowClose" />
-        </template>
-      </n-button>
+      <div class="min-button-wrapper" @click="min" title="最小化">
+        <n-button :focusable="false" title="最小化" tertiary circle @click.stop="min">
+          <template #icon>
+            <SvgIcon name="WindowMinimize" />
+          </template>
+        </n-button>
+        <div class="min-expanded-area"></div>
+      </div>
+      <div class="max-button-wrapper" @click="maxOrRes" :title="isMax ? '还原' : '最大化'">
+        <n-button
+          :focusable="false"
+          :title="isMax ? '还原' : '最大化'"
+          tertiary
+          circle
+          @click.stop="maxOrRes"
+        >
+          <template #icon>
+            <SvgIcon :name="isMax ? 'WindowRestore' : 'WindowMaximize'" />
+          </template>
+        </n-button>
+        <div class="max-expanded-area"></div>
+      </div>
+      <div class="close-button-wrapper" @click="tryClose" title="关闭">
+        <n-button :focusable="false" title="关闭" tertiary circle @click.stop="tryClose">
+          <template #icon>
+            <SvgIcon name="WindowClose" />
+          </template>
+        </n-button>
+        <div class="close-expanded-area"></div>
+      </div>
     </n-flex>
     <!-- 关闭弹窗 -->
     <n-modal
@@ -91,8 +100,9 @@
 <script setup lang="ts">
 import type { DropdownOption } from "naive-ui";
 import { useSettingStore } from "@/stores";
-import { isElectron, isDev, renderIcon } from "@/utils/helper";
+import { renderIcon } from "@/utils/helper";
 import { openSetting } from "@/utils/modal";
+import { isDev, isElectron } from "@/utils/env";
 
 const router = useRouter();
 const settingStore = useSettingStore();
@@ -100,6 +110,9 @@ const settingStore = useSettingStore();
 const showCloseModal = ref(false);
 // 是否记住
 const rememberNotAsk = ref(false);
+
+// 是否启用无边框窗口
+const useBorderless = ref(true);
 
 // 当前窗口状态
 const isMax = ref(false);
@@ -110,10 +123,8 @@ const min = () => window.electron.ipcRenderer.send("win-min");
 // 最大化或还原
 const maxOrRes = () => {
   if (window.electron.ipcRenderer.sendSync("win-state")) {
-    isMax.value = false;
     window.electron.ipcRenderer.send("win-restore");
   } else {
-    isMax.value = true;
     window.electron.ipcRenderer.send("win-max");
   }
 };
@@ -125,7 +136,7 @@ const hideOrClose = (action: "hide" | "exit") => {
     settingStore.closeAppMethod = action;
   }
   showCloseModal.value = false;
-  window.electron.ipcRenderer.send(action === "hide" ? "win-hide" : "win-close");
+  window.electron.ipcRenderer.send(action === "hide" ? "win-hide" : "quit-app");
 };
 
 // 尝试关闭软件
@@ -156,7 +167,7 @@ const setOptions = computed<DropdownOption[]>(() => [
     ),
   },
   {
-    key: "header-divider",
+    key: "divider-1",
     type: "divider",
   },
   {
@@ -164,7 +175,7 @@ const setOptions = computed<DropdownOption[]>(() => [
     key: "restart",
     label: "软件热重载",
     show: isElectron,
-    props: { onClick: () => window.location.reload() },
+    props: { onClick: () => window.electron.ipcRenderer.send("win-reload") },
     icon: renderIcon("Restart"),
   },
   {
@@ -197,10 +208,17 @@ const setSelect = (key: string) => {
   }
 };
 
-onMounted(() => {
-  // 获取窗口状态
+onMounted(async () => {
+  // 获取窗口状态并监听主进程的状态变更
   if (isElectron) {
+    // 获取无边框窗口配置
+    const windowConfig = await window.api.store.get("window");
+    useBorderless.value = windowConfig?.useBorderless ?? true;
+    // 获取窗口状态
     isMax.value = window.electron.ipcRenderer.sendSync("win-state");
+    window.electron.ipcRenderer.on("win-state-change", (_event, value: boolean) => {
+      isMax.value = value;
+    });
   }
 });
 </script>
@@ -233,6 +251,33 @@ onMounted(() => {
   .client-control {
     .divider {
       margin: 0 0 0 12px;
+    }
+    .min-button-wrapper,
+    .max-button-wrapper,
+    .close-button-wrapper {
+      position: relative;
+      cursor: pointer;
+    }
+    .min-expanded-area,
+    .max-expanded-area,
+    .close-expanded-area {
+      position: fixed;
+      top: 0;
+      width: 50px;
+      height: 70px;
+      background-color: transparent;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      z-index: 1000;
+    }
+    .close-expanded-area {
+      right: 0;
+    }
+    .max-expanded-area {
+      right: 50px;
+    }
+    .min-expanded-area {
+      right: 100px;
     }
   }
 }

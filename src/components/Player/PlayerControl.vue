@@ -21,17 +21,39 @@
             <SvgIcon name="AddList" />
           </div>
           <!-- 下载 -->
-          <div class="menu-icon" @click.stop="openDownloadSong(musicStore.playSong)">
+          <div
+            class="menu-icon"
+            v-if="!musicStore.playSong.path && statusStore.isDeveloperMode"
+            @click.stop="openDownloadSong(musicStore.playSong)"
+          >
             <SvgIcon name="Download" />
+          </div>
+          <!-- 显示评论 -->
+          <div
+            v-if="!musicStore.playSong.path && !statusStore.pureLyricMode"
+            class="menu-icon"
+            @click.stop="statusStore.showPlayerComment = !statusStore.showPlayerComment"
+          >
+            <SvgIcon :depth="statusStore.showPlayerComment ? 1 : 3" name="Message" />
           </div>
         </n-flex>
         <div class="center">
           <div class="btn">
+            <!-- 随机按钮 -->
+            <template v-if="musicStore.playSong.type !== 'radio' && !statusStore.personalFmMode">
+              <div class="btn-icon mode-icon" @click.stop="player.toggleShuffle()">
+                <SvgIcon
+                  :name="statusStore.shuffleIcon"
+                  :size="20"
+                  :depth="statusStore.shuffleMode === 'off' ? 3 : 1"
+                />
+              </div>
+            </template>
             <!-- 不喜欢 -->
             <div
               v-if="statusStore.personalFmMode"
               class="btn-icon"
-              v-debounce="() => player.personalFMTrash(musicStore.personalFMSong?.id)"
+              v-debounce="() => songManager.personalFMTrash(musicStore.personalFMSong?.id)"
             >
               <SvgIcon class="icon" :size="18" name="ThumbDown" />
             </div>
@@ -65,65 +87,27 @@
             <div class="btn-icon" v-debounce="() => player.nextOrPrev('next')">
               <SvgIcon :size="26" name="SkipNext" />
             </div>
+            <!-- 循环按钮 -->
+            <template v-if="musicStore.playSong.type !== 'radio' && !statusStore.personalFmMode">
+              <div class="btn-icon mode-icon" @click.stop="player.toggleRepeat()">
+                <SvgIcon
+                  :name="statusStore.repeatIcon"
+                  :size="20"
+                  :depth="statusStore.repeatMode === 'off' ? 3 : 1"
+                />
+              </div>
+            </template>
           </div>
           <!-- 进度条 -->
           <div class="slider">
-            <span>{{ secondsToTime(statusStore.currentTime) }}</span>
-            <n-slider
-              v-model:value="statusStore.progress"
-              :step="0.01"
-              :min="0"
-              :max="100"
-              :tooltip="false"
-              :keyboard="false"
-              class="player-slider"
-              @dragstart="player.pause(false)"
-              @dragend="sliderDragend"
-            />
-            <span>{{ secondsToTime(statusStore.duration) }}</span>
+            <span @click="toggleTimeFormat">{{ timeDisplay[0] }}</span>
+            <PlayerSlider :show-tooltip="false" />
+            <span @click="toggleTimeFormat">{{ timeDisplay[1] }}</span>
           </div>
         </div>
         <n-flex class="right" align="center" justify="end">
-          <!-- 显示评论 -->
-          <div
-            v-if="!musicStore.playSong.path && !statusStore.pureLyricMode"
-            class="menu-icon"
-            @click.stop="statusStore.showPlayerComment = !statusStore.showPlayerComment"
-          >
-            <SvgIcon :depth="statusStore.showPlayerComment ? 1 : 3" name="Message" />
-          </div>
-          <!-- 播放模式 -->
-          <div class="menu-icon" @click.stop="player.togglePlayMode(false)">
-            <SvgIcon :name="statusStore.playModeIcon" />
-          </div>
-          <!-- 音量调节 -->
-          <n-popover :show-arrow="false" :style="{ '--main-color': statusStore.mainColor }" raw>
-            <template #trigger>
-              <div class="menu-icon" @click.stop="player.toggleMute" @wheel="player.setVolume">
-                <SvgIcon :name="statusStore.playVolumeIcon" />
-              </div>
-            </template>
-            <div class="volume-change" @wheel="player.setVolume">
-              <n-slider
-                v-model:value="statusStore.playVolume"
-                :tooltip="false"
-                :min="0"
-                :max="1"
-                :step="0.01"
-                vertical
-                @update:value="(val) => player.setVolume(val)"
-              />
-              <n-text class="slider-num">{{ statusStore.playVolumePercent }}%</n-text>
-            </div>
-          </n-popover>
-          <!-- 播放列表 -->
-          <div
-            v-if="!statusStore.personalFmMode"
-            class="menu-icon"
-            @click.stop="statusStore.playListShow = !statusStore.playListShow"
-          >
-            <SvgIcon name="PlayList" />
-          </div>
+          <!-- 功能区 -->
+          <PlayerRightMenu player />
         </n-flex>
       </div>
     </Transition>
@@ -131,24 +115,21 @@
 </template>
 
 <script setup lang="ts">
-import { useMusicStore, useStatusStore, useDataStore } from "@/stores";
-import { secondsToTime, calculateCurrentTime } from "@/utils/time";
-import { openDownloadSong, openPlaylistAdd } from "@/utils/modal";
+import { usePlayerController } from "@/core/player/PlayerController";
+import { useSongManager } from "@/core/player/SongManager";
+import { useDataStore, useMusicStore, useStatusStore } from "@/stores";
 import { toLikeSong } from "@/utils/auth";
-import player from "@/utils/player";
+import { useTimeFormat } from "@/composables/useTimeFormat";
+import { openDownloadSong, openPlaylistAdd } from "@/utils/modal";
 
 const dataStore = useDataStore();
 const musicStore = useMusicStore();
 const statusStore = useStatusStore();
 
-// 进度条拖拽结束
-const sliderDragend = () => {
-  const seek = calculateCurrentTime(statusStore.progress, statusStore.duration);
-  statusStore.playStatus = true;
-  // 调整进度
-  player.setSeek(seek);
-  player.play();
-};
+const songManager = useSongManager();
+const player = usePlayerController();
+
+const { timeDisplay, toggleTimeFormat } = useTimeFormat();
 </script>
 
 <style lang="scss" scoped>
@@ -156,7 +137,6 @@ const sliderDragend = () => {
   width: 100%;
   height: 80px;
   overflow: hidden;
-  cursor: pointer;
   .control-content {
     width: 100%;
     height: 100%;
@@ -170,7 +150,7 @@ const sliderDragend = () => {
     height: 100%;
     padding: 0 30px;
     transition: opacity 0.3s;
-    .menu-icon {
+    :deep(.menu-icon) {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -182,14 +162,20 @@ const sliderDragend = () => {
       cursor: pointer;
       .n-icon {
         font-size: 24px;
-        color: rgb(var(--main-color));
+        color: rgb(var(--main-cover-color));
       }
       &:hover {
         transform: scale(1.1);
-        background-color: rgba(var(--main-color), 0.14);
+        background-color: rgba(var(--main-cover-color), 0.14);
       }
       &:active {
         transform: scale(1);
+      }
+    }
+    :deep(.n-badge-sup) {
+      background-color: rgba(var(--main-cover-color), 0.14);
+      .n-base-slot-machine {
+        color: rgb(var(--main-cover-color));
       }
     }
   }
@@ -211,18 +197,19 @@ const sliderDragend = () => {
         width: 38px;
         height: 38px;
         border-radius: 50%;
+        will-change: transform;
         transition:
-          backdrop-filter 0.3s,
           background-color 0.3s,
           transform 0.3s;
         cursor: pointer;
+        margin: 0 4px;
+
         .n-icon {
-          color: rgb(var(--main-color));
+          color: rgb(var(--main-cover-color));
         }
         &:hover {
           transform: scale(1.1);
-          backdrop-filter: blur(10px);
-          background-color: rgba(var(--main-color), 0.14);
+          background-color: rgba(var(--main-cover-color), 0.14);
         }
         &:active {
           transform: scale(1);
@@ -231,21 +218,21 @@ const sliderDragend = () => {
       .play-pause {
         --n-width: 44px;
         --n-height: 44px;
-        --n-color: rgba(var(--main-color), 0.14);
-        --n-color-hover: rgba(var(--main-color), 0.2);
-        --n-color-focus: rgba(var(--main-color), 0.2);
-        --n-color-pressed: rgba(var(--main-color), 0.12);
+        --n-color: rgba(var(--main-cover-color), 0.14);
+        --n-color-hover: rgba(var(--main-cover-color), 0.2);
+        --n-color-focus: rgba(var(--main-cover-color), 0.2);
+        --n-color-pressed: rgba(var(--main-cover-color), 0.12);
         backdrop-filter: blur(10px);
         margin: 0 12px;
         transition:
           background-color 0.3s,
           transform 0.3s;
         .n-icon {
-          color: rgb(var(--main-color));
+          color: rgb(var(--main-cover-color));
           transition: opacity 0.1s ease-in-out;
         }
         :deep(.n-base-loading) {
-          color: rgb(var(--main-color));
+          color: rgb(var(--main-cover-color));
         }
         &:hover {
           transform: scale(1.1);
@@ -262,7 +249,6 @@ const sliderDragend = () => {
       width: 100%;
       max-width: 480px;
       font-size: 12px;
-      cursor: pointer;
       .n-slider {
         margin: 6px 8px;
         --n-handle-size: 12px;
@@ -270,6 +256,7 @@ const sliderDragend = () => {
       }
       span {
         opacity: 0.6;
+        cursor: pointer;
       }
     }
   }
@@ -280,28 +267,12 @@ const sliderDragend = () => {
     }
   }
 }
-// volume
-.volume-change {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 64px;
-  height: 200px;
-  padding: 12px 16px;
-  backdrop-filter: blur(10px);
-  background-color: rgba(var(--main-color), 0.14);
-  .slider-num {
-    margin-top: 4px;
-    font-size: 12px;
-    color: rgb(var(--main-color));
-  }
-}
 // slider
 .n-slider {
-  --n-rail-color: rgba(var(--main-color), 0.14);
-  --n-rail-color-hover: rgba(var(--main-color), 0.3);
-  --n-fill-color: rgb(var(--main-color));
-  --n-handle-color: rgb(var(--main-color));
-  --n-fill-color-hover: rgb(var(--main-color));
+  --n-rail-color: rgba(var(--main-cover-color), 0.14);
+  --n-rail-color-hover: rgba(var(--main-cover-color), 0.3);
+  --n-fill-color: rgb(var(--main-cover-color));
+  --n-handle-color: rgb(var(--main-cover-color));
+  --n-fill-color-hover: rgb(var(--main-cover-color));
 }
 </style>

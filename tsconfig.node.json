@@ -3,16 +3,25 @@
   "include": [
     "electron.vite.config.*",
     "electron/**/*",
+    "electron/main/**/*.d.ts",
     "electron/main/index.ts",
-    "electron/main/logger.ts",
-    "electron/main/store.ts",
+    "electron/main/logger/index.ts",
+    "electron/main/store/index.ts",
     "electron/main/utils.ts",
     "electron/main/index.d.ts",
     "electron/preload/index.d.ts",
-    "electron/preload/index.ts"
-, "dist/lastfm.ts"  ],
+    "electron/preload/index.ts",
+    "src/assets/data/*",
+    "src/types/shared.ts"
+  ],
   "compilerOptions": {
     "composite": true,
-    "types": ["electron-vite/node"]
+    "types": ["electron-vite/node"],
+    "paths": {
+      "@native": ["./native/smtc-for-splayer"],
+      "@discord-rpc": ["./native/discord-rpc-for-splayer"],
+      "@mpris": ["./native/mpris-for-splayer"],
+      "@shared": ["./src/types/shared.ts"]
+    }
   }
 }
